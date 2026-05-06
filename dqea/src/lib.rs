@@ -441,3 +441,51 @@ pub fn get_nizk_proof(
 
     result
 }
+
+pub fn dqea_compute_sharesandwitness(
+    vecs: Vec<DensePolynomial<Fr>>,
+    srs: Srs,
+    rho: Fr,
+    i_value: Fr,
+) -> (
+    Vec<Share>,
+    Vec<Witness>,
+) {
+    let shares =
+        vecs
+            .par_iter()
+            .map(
+                |p| {
+                    open(
+                        p,
+                        i_value,
+                    )
+                },
+            )
+            .collect::<Vec<_>>();
+
+    let witnesses =
+        vecs
+            .par_iter()
+            .enumerate()
+            .map(
+                |(idx, p)| {
+                    create_witness(
+                        &srs,
+                        p,
+                        idx + 1,
+                        i_value,
+                        rho,
+                    )
+                },
+            )
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+    (
+        shares,
+        witnesses,
+    )
+}
+
+
