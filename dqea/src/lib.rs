@@ -766,3 +766,101 @@ pub fn dqea_quote_phase(
         R_new,
     )
 }
+
+
+
+pub fn dqea_verify(
+    hash_message_to_field: Fr,
+    vk: G1Projective,
+    sig: (
+        Fr,
+        Fr,
+    ),
+) {
+    let s =
+        sig.1;
+
+    let r_new =
+        sig.0;
+
+    let q1 =
+        G1Projective::generator()
+            * hash_message_to_field
+            + vk
+            * r_new;
+
+    let s =
+        q1
+            * s
+                .inverse()
+                .unwrap();
+
+    let s_new =
+        s.into_affine()
+            .x;
+
+    let rr =
+        Fr::from(
+            BigUint::from_bytes_be(
+                s_new
+                    .to_string()
+                    .as_bytes(),
+            ),
+        );
+
+    assert_eq!(
+        r_new,
+        rr,
+    );
+}
+
+
+pub fn get_nizk_type2(
+    s_i_vector: Vec<Fr>,
+    R_new: G1Affine,
+) -> Vec<G1Projective> {
+    let p_iii =
+        s_i_vector
+            .par_iter()
+            .map(
+                |value| {
+                    R_new
+                        * value
+                },
+            )
+            .collect::<Vec<_>>();
+
+    p_iii
+}
+
+
+pub fn verify_nizk_type2(
+    R_new: G1Affine,
+    r_new: Fr,
+    vk: G1Projective,
+    p_iii: Vec<G1Projective>,
+    hash_message_to_field: Fr,
+    Theta_new: Fr,
+) {
+    let u1 =
+        R_new
+            * hash_message_to_field
+            * Theta_new;
+
+    let u2: G1Projective =
+        p_iii
+            .iter()
+            .sum();
+
+    let u3 =
+        vk
+            * r_new
+            + G1Projective::generator()
+            * hash_message_to_field;
+
+    assert_eq!(
+        u1 + u2,
+        u3,
+    );
+}
+
