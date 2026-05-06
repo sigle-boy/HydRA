@@ -373,3 +373,71 @@ pub fn verify_nizk_proof(
     );
 }
 
+pub fn get_nizk_proof(
+    y_i_vector: G1Projective,
+    u_i_big_vector: G1Projective,
+    x_i_vector: Fr,
+    u_i_small_vector: Fr,
+    index: usize,
+    num: usize,
+) -> Fr {
+    let mut hasher =
+        Sha256::new();
+
+    let y_temp =
+        y_i_vector
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let u_temp =
+        u_i_big_vector
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let i_temp =
+        index
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let total =
+        num
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    hasher.update(
+        y_temp,
+    );
+
+    hasher.update(
+        u_temp,
+    );
+
+    hasher.update(
+        i_temp,
+    );
+
+    hasher.update(
+        total,
+    );
+
+    let result =
+        hasher.finalize();
+
+    let x_bar =
+        Fr::from(
+            BigUint::from_bytes_be(
+                result.as_slice(),
+            ),
+        );
+
+    let result =
+        x_bar
+            * x_i_vector
+            + u_i_small_vector;
+
+    result
+}
