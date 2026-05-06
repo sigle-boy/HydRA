@@ -24,3 +24,16 @@ use std::time::{Duration, Instant};
 use rayon::{prelude::*};
 use rand::{RngExt, SeedableRng};
 use rand::rngs::StdRng;
+
+pub fn dqea_setup<R: RngCore>(
+    thresh_num: usize,
+    rng: &mut R,
+) -> Srs {
+    let srs = setup(
+        thresh_num,
+        rng,
+    )
+    .unwrap();
+
+    srs
+}
