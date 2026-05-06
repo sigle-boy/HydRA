@@ -573,3 +573,196 @@ pub fn dqea_prequote_phase<R: RngCore>(
     )
 }
 
+pub fn dqea_quote_phase(
+    vk: G1Projective,
+    y_i_vector: Vec<G1Projective>,
+    fy_i_vector: Vec<G1Projective>,
+    pi_i_two_vector: Vec<Fr>,
+    V_i_vector: AdditiveShares<Fr>,
+    k_i_vector: AdditiveShares<Fr>,
+    w_i_vector: AdditiveShares<Fr>,
+    report_m: &[u8],
+    header_phi: &[u8],
+    thres_num: usize,
+) -> (
+    Vec<Fr>,
+    Fr,
+    Fr,
+    Fr,
+    G1Affine,
+) {
+    for index in 0..thres_num + 1 {
+        verify_nizk_proof(
+            y_i_vector[index],
+            fy_i_vector[index],
+            index,
+            pi_i_two_vector[index],
+            thres_num,
+        );
+    }
+
+    let mut hasher1 =
+        Sha256::new();
+
+    hasher1.update(
+        report_m,
+    );
+
+    hasher1.update(
+        header_phi,
+    );
+
+    let res =
+        hasher1.finalize();
+
+    let mut hasher2 =
+        Sha256::new();
+
+    for index in 0..thres_num + 1 {
+        hasher2.update(
+            pi_i_two_vector[index]
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+        );
+
+        hasher2.update(
+            fy_i_vector[index]
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+        );
+
+        hasher2.update(
+            V_i_vector
+                .shares[index]
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+        );
+    }
+
+    hasher2.update(
+        vk
+            .to_string()
+            .as_bytes()
+            .to_vec(),
+    );
+
+    hasher2.update(
+        res,
+    );
+
+    let Lambda =
+        hasher2.finalize();
+
+    let Theta =
+        Sha256::digest(
+            Lambda,
+        );
+
+    let Lambda_new =
+        Fr::from(
+            BigUint::from_bytes_be(
+                Lambda.as_slice(),
+            ),
+        );
+
+    let Theta_new =
+        Fr::from(
+            BigUint::from_bytes_be(
+                Theta.as_slice(),
+            ),
+        );
+
+    let deta_i_vector: Vec<_> =
+        (0..thres_num + 1)
+            .into_par_iter()
+            .map(
+                |index| {
+                    Lambda_new
+                        * V_i_vector.shares[index]
+                        + Theta_new
+                        * w_i_vector.shares[index]
+                },
+            )
+            .collect();
+
+    let deta: Fr =
+        deta_i_vector
+            .iter()
+            .sum();
+
+    let R =
+        vk
+            * deta
+                .inverse()
+                .unwrap();
+
+    let R_new =
+        R.into_affine();
+
+    let r =
+        R_new.x;
+
+    let r_new =
+        Fr::from(
+            BigUint::from_bytes_be(
+                r.to_string()
+                    .as_bytes(),
+            ),
+        );
+
+    let s_i_vector =
+        (0..thres_num + 1)
+            .into_par_iter()
+            .map(
+                |index| {
+                    let temp1 =
+                        k_i_vector.shares[index]
+                            * Fr::from(
+                                BigUint::from_bytes_be(
+                                    res.as_slice(),
+                                ),
+                            )
+                            + r_new
+                            * V_i_vector.shares[index];
+
+                    let temp2 =
+                        r_new
+                            * Theta_new
+                            * w_i_vector.shares[index];
+
+                    Lambda_new
+                        * temp1
+                        + temp2
+                },
+            )
+            .collect::<Vec<_>>();
+
+    let pi_ii_vector: Vec<_> =
+        s_i_vector
+            .par_iter()
+            .map(
+                |x| {
+                    R
+                        * x
+                },
+            )
+            .collect();
+
+    let hash_message_to_field =
+        Fr::from(
+            BigUint::from_bytes_be(
+                res.as_slice(),
+            ),
+        );
+
+    (
+        s_i_vector,
+        Theta_new,
+        r_new,
+        hash_message_to_field,
+        R_new,
+    )
+}
