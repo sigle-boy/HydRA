@@ -488,4 +488,88 @@ pub fn dqea_compute_sharesandwitness(
     )
 }
 
+pub fn dqea_prequote_phase<R: RngCore>(
+    triple: BeaverTripleShares<Fr>,
+    x_i_vector: Vec<Fr>,
+    y_i_vector: Vec<G1Projective>,
+    lambda_i_vector: Vec<Fr>,
+    u_i_small_vector: Vec<Fr>,
+    rng: &mut R,
+    thres_num: usize,
+) -> (
+    AdditiveShares<Fr>,
+    AdditiveShares<Fr>,
+    Vec<G1Projective>,
+    Vec<Fr>,
+    AdditiveShares<Fr>,
+) {
+    let k_i_vector =
+        share_secret_n_n(
+            Fr::rand(
+                rng,
+            ),
+            thres_num + 1,
+            rng,
+        );
+
+    let fy_i_vector =
+        k_i_vector
+            .shares
+            .par_iter()
+            .map(
+                |x| {
+                    G1Projective::generator()
+                        * x
+                },
+            )
+            .collect::<Vec<_>>();
+
+    let w_i_vector =
+        (0..thres_num + 1)
+            .into_par_iter()
+            .map(
+                |i| {
+                    u_i_small_vector[i]
+                        * lambda_i_vector[i]
+                },
+            )
+            .collect::<Vec<_>>();
+
+    let w_i_vector =
+        AdditiveShares {
+            shares: w_i_vector,
+        };
+
+    let V_i_vector =
+        beaver_multiply_n_n(
+            &k_i_vector,
+            &w_i_vector,
+            &triple,
+        );
+
+    let pi_i_two_vector =
+        (0..thres_num + 1)
+            .into_par_iter()
+            .map(
+                |index| {
+                    get_nizk_proof(
+                        y_i_vector[index],
+                        fy_i_vector[index],
+                        x_i_vector[index],
+                        k_i_vector.shares[index],
+                        index,
+                        thres_num,
+                    )
+                },
+            )
+            .collect::<Vec<_>>();
+
+    (
+        k_i_vector,
+        w_i_vector,
+        fy_i_vector,
+        pi_i_two_vector,
+        V_i_vector,
+    )
+}
 
