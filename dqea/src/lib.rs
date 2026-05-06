@@ -297,3 +297,79 @@ pub fn dqea_thresshare_two_phase(
         vk,
     )
 }
+
+pub fn verify_nizk_proof(
+    y_i_vector: G1Projective,
+    u_i_big_vector: G1Projective,
+    index: usize,
+    pi_i_vector: Fr,
+    num: usize,
+) {
+    let mut hasher =
+        Sha256::new();
+
+    let y_temp =
+        y_i_vector
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let u_temp =
+        u_i_big_vector
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let i_temp =
+        index
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    let total =
+        num
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
+    hasher.update(
+        y_temp,
+    );
+
+    hasher.update(
+        u_temp,
+    );
+
+    hasher.update(
+        i_temp,
+    );
+
+    hasher.update(
+        total,
+    );
+
+    let result =
+        hasher.finalize();
+
+    let pii =
+        Fr::from(
+            BigUint::from_bytes_be(
+                result.as_slice(),
+            ),
+        );
+
+    let a =
+        G1Projective::generator()
+            * pi_i_vector;
+
+    let b =
+        y_i_vector
+            * pii
+            + u_i_big_vector;
+
+    assert_eq!(
+        a,
+        b,
+    );
+}
+
