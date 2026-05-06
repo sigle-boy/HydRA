@@ -186,3 +186,114 @@ pub fn dqea_thresshare_one_phase(
         vecs,
     )
 }
+
+
+pub fn dqea_thresshare_two_phase(
+    x_i_vector: Vec<Fr>,
+    comm_i_vector: Vec<Commitment>,
+    y_i_vector: Vec<G1Projective>,
+    srs: Srs,
+    rho: Fr,
+    vecs: Vec<DensePolynomial<Fr>>,
+    shares: Vec<Share>,
+    witnesses: Vec<Witness>,
+    total_num: usize,
+) -> (
+    Vec<Fr>,
+    G1Projective,
+) {
+    let mut u =
+        Fr::zero();
+
+    let vk: G1Projective =
+        y_i_vector
+            .iter()
+            .sum();
+
+    let ok =
+        verify_aggregated(
+            &srs,
+            &comm_i_vector,
+            &shares,
+            &witnesses,
+            Fr::from(
+                2,
+            ),
+            rho,
+        )
+        .unwrap();
+
+    assert_eq!(
+        ok,
+        true,
+    );
+
+    let u_i_small_vector: Vec<Fr> =
+        (0..total_num)
+            .into_par_iter()
+            .map(
+                |value| {
+                    let x: Fr =
+                        vecs
+                            .par_iter()
+                            .map(
+                                |p| {
+                                    open(
+                                        p,
+                                        Fr::from(
+                                            value as i32,
+                                        ),
+                                    )
+                                    .0
+                                },
+                            )
+                            .sum();
+
+                    x
+                },
+            )
+            .collect();
+
+    let u_i_big_vector =
+        u_i_small_vector
+            .par_iter()
+            .map(
+                |x| {
+                    G1Projective::generator()
+                        * x
+                },
+            )
+            .collect::<Vec<_>>();
+
+    let pi_i_vector =
+        (0..total_num)
+            .into_par_iter()
+            .map(
+                |index| {
+                    get_nizk_proof(
+                        y_i_vector[index],
+                        u_i_big_vector[index],
+                        x_i_vector[index],
+                        u_i_small_vector[index],
+                        index,
+                        total_num,
+                    )
+                },
+            )
+            .collect::<Vec<_>>();
+
+    for index in 0..total_num {
+        verify_nizk_proof(
+            y_i_vector[index],
+            u_i_big_vector[index],
+            index,
+            pi_i_vector[index],
+            total_num,
+        );
+    }
+
+    (
+        u_i_small_vector,
+        vk,
+    )
+}
