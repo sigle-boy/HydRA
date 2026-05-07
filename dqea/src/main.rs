@@ -17,3 +17,25 @@ const TOTAL_NUMBER: usize = 105;
 const HEADER_LEN: usize = 48;
 const REPORT_BODY_LEN: usize = 384;
 const HEADER_REPORT_BODY_LEN: usize = HEADER_LEN + REPORT_BODY_LEN;
+
+
+fn main () {
+    println!("This is a test file.");
+     println!("t: {}", THRESHORD);
+    println!("n: {}", TOTAL_NUMBER);
+    let i_value = Fr::from(2);
+    let rho = Fr::from(11u64);
+    let rng = &mut ark_std::test_rng();
+
+   
+    let quote = fs::read("quote.dat").expect("read error");
+    println!("file: {:?}",quote);
+    let header = &quote[0..HEADER_LEN];
+    let report_body = &quote[HEADER_LEN..HEADER_REPORT_BODY_LEN];
+
+    println!("header: {:?}", header);
+    println!("report_body: {:?}", report_body);
+    new_test();
+
+
+}
