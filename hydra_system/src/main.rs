@@ -72,3 +72,5 @@ println!("设备的公钥信息：{}",pk);
 let start = Instant::now();
 	let res = GrothSetup::verify(&vk, &[pk, root[LEN], output, time, period][..], &proof).unwrap();
 	let duration = start.elapsed();
+
+println!("Groth verification time: {:?}", duration);
