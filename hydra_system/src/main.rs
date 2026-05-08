@@ -24,7 +24,11 @@ fn main() {
     
 let mut root = vec![];
 
+b_tree[223] = leaf;
+	
+	Build_Static_Shrubs(&mut root, &b_tree, hasher.clone());
 
+	println!("root length: {}", root.len());
 let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
 	let pk = Fr::rand(rng);
 	let sk = Fr::rand(rng);
