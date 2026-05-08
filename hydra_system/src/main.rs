@@ -74,3 +74,5 @@ let start = Instant::now();
 	let duration = start.elapsed();
 
 println!("Groth verification time: {:?}", duration);
+	println!("----------");
+
