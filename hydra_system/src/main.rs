@@ -51,3 +51,7 @@ b_tree[223] = leaf;
 	println!("root length: {}", root.len());
     
 }
+
+let circuit = PoseidonC::new(pk, sk,ar, time,period,output, root[LEN],&path, &tag, hasher);
+
+	let (pkk, vk) = GrothSetup::circuit_specific_setup(circuit.clone(), rng).unwrap();
