@@ -60,3 +60,10 @@ let start = Instant::now();
 
 	let proof = GrothSetup::prove(&pkk, circuit, rng).unwrap();
 	let duration = start.elapsed();
+
+println!("设备的公钥信息：{}",pk);
+	println!("设备的私钥信息：{}",sk);
+	println!("设备的创建时间：{}",time);
+	println!("设备的有效期：{}",period);
+	println!("设备被度量的内存信息：{}",ar);
+	println!("Groth proof time: {:?}", duration);
