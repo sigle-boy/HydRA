@@ -81,3 +81,4 @@ println!("Groth verification time: {:?}", duration);
 	} else {
 		println!("验证失败！");
 	}
+}
