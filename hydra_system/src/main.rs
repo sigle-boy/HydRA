@@ -76,3 +76,8 @@ let start = Instant::now();
 println!("Groth verification time: {:?}", duration);
 	println!("----------");
 	assert_eq!(true, res);
+	if res == true {
+		println!("验证成功！");
+	} else {
+		println!("验证失败！");
+	}
