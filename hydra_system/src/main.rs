@@ -55,3 +55,8 @@ b_tree[223] = leaf;
 let circuit = PoseidonC::new(pk, sk,ar, time,period,output, root[LEN],&path, &tag, hasher);
 
 	let (pkk, vk) = GrothSetup::circuit_specific_setup(circuit.clone(), rng).unwrap();
+
+let start = Instant::now();
+
+	let proof = GrothSetup::prove(&pkk, circuit, rng).unwrap();
+	let duration = start.elapsed();
