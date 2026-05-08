@@ -44,6 +44,10 @@ let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
 	let output = hasher.hash(&[output_3, period][..]).unwrap();
 
 
+b_tree[223] = leaf;
+	
+	Build_Static_Shrubs(&mut root, &b_tree, hasher.clone());
 
+	println!("root length: {}", root.len());
     
 }
