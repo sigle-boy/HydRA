@@ -25,7 +25,19 @@ fn main() {
 let mut root = vec![];
 
 
+let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
+	let pk = Fr::rand(rng);
+	let sk = Fr::rand(rng);
+	let time = Fr::rand(rng);
+	let period = Fr::rand(rng);
+	let ar = Fr::rand(rng);
 
+	let c = hasher.hash(&[ar, sk][..]).unwrap();
+	let leaf = hasher.hash(&[c, pk][..]).unwrap();
+	let output_1 = hasher.hash(&[pk, ar][..]).unwrap();
+	let output_2 = hasher.hash(&[output_1, sk][..]).unwrap();
+	let output_3 = hasher.hash(&[output_2, time][..]).unwrap();
+	let output = hasher.hash(&[output_3, period][..]).unwrap();
 
 
 
