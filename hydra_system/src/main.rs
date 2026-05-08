@@ -36,6 +36,7 @@ let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
 	let period = Fr::rand(rng);
 	let ar = Fr::rand(rng);
 
+
 	let c = hasher.hash(&[ar, sk][..]).unwrap();
 	let leaf = hasher.hash(&[c, pk][..]).unwrap();
 	let output_1 = hasher.hash(&[pk, ar][..]).unwrap();
@@ -67,3 +68,7 @@ println!("设备的公钥信息：{}",pk);
 	println!("设备的有效期：{}",period);
 	println!("设备被度量的内存信息：{}",ar);
 	println!("Groth proof time: {:?}", duration);
+
+let start = Instant::now();
+	let res = GrothSetup::verify(&vk, &[pk, root[LEN], output, time, period][..], &proof).unwrap();
+	let duration = start.elapsed();
