@@ -75,4 +75,4 @@ let start = Instant::now();
 
 println!("Groth verification time: {:?}", duration);
 	println!("----------");
-
+	assert_eq!(true, res);
