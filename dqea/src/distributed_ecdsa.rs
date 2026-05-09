@@ -21,3 +21,4 @@ pub struct Srs {
     pub max_degree: usize,
       pub gamma_secret_for_demo_only:Fr,
 }
+#[derive(Clone, Debug)]
