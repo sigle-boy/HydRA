@@ -31,4 +31,5 @@ pub enum PcError {
         DegreeTooLarge { degree: usize, max_degree: usize },
         PointAtRootDivision,
       InconsistentInputLengths,
+    EmptyInput,
 }
