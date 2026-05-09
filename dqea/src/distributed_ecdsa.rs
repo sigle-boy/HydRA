@@ -10,3 +10,5 @@ use std::fmt::{Display, Formatter};
 use rayon::{prelude::*};
 type Poly = DensePolynomial<Fr>;
 type GT = <Bls12_381 as Pairing>::TargetField;
+
+use rayon::{prelude::*, range};
