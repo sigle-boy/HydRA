@@ -8,3 +8,6 @@ use arkworks_native_gadgets::poseidon::{
 		sbox::PoseidonSbox,  Poseidon, PoseidonParameters,
 	};
 
+pub fn PoseidonSetup(curve: Curve, exp: i8, width: u8) -> Poseidon<Fr>{
+
+}
