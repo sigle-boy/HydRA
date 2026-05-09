@@ -22,3 +22,4 @@ pub struct Srs {
       pub gamma_secret_for_demo_only:Fr,
 }
 #[derive(Clone, Debug)]
+pub struct Commitment(pub G1Affine);
