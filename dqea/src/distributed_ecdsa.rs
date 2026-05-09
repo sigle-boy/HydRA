@@ -33,3 +33,5 @@ pub enum PcError {
       InconsistentInputLengths,
     EmptyInput,
 }
+
+impl std::error::Error for PcError {}
