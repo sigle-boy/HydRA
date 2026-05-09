@@ -15,4 +15,5 @@ use rayon::{prelude::*, range};
 #[derive(Clone, Debug)]
 pub struct Srs {
     pub g: G1Affine,
+     pub h: G2Affine,
 }
