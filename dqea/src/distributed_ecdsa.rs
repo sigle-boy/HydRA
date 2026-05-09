@@ -13,3 +13,6 @@ type GT = <Bls12_381 as Pairing>::TargetField;
 
 use rayon::{prelude::*, range};
 #[derive(Clone, Debug)]
+pub struct Srs {
+    pub g: G1Affine,
+}
