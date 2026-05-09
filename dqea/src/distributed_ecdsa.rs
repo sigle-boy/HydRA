@@ -28,5 +28,5 @@ pub struct Share(pub Fr);
 pub struct Witness(pub G1Affine, pub G2Affine);
 #[derive(Debug)]
 pub enum PcError {
-    
+        DegreeTooLarge { degree: usize, max_degree: usize },
 }
