@@ -23,3 +23,4 @@ pub struct Srs {
 }
 #[derive(Clone, Debug)]
 pub struct Commitment(pub G1Affine);
+#[derive(Clone, Debug)]
