@@ -19,4 +19,5 @@ pub struct Srs {
      pub gamma_g_powers: Vec<G1Affine>,
     pub gamma_h_powers: Vec<G2Affine>,
     pub max_degree: usize,
+      pub gamma_secret_for_demo_only:Fr,
 }
