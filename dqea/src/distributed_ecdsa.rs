@@ -17,4 +17,5 @@ pub struct Srs {
     pub g: G1Affine,
      pub h: G2Affine,
      pub gamma_g_powers: Vec<G1Affine>,
+    pub gamma_h_powers: Vec<G2Affine>,
 }
