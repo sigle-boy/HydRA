@@ -9,5 +9,5 @@ use arkworks_native_gadgets::poseidon::{
 	};
 
 pub fn PoseidonSetup(curve: Curve, exp: i8, width: u8) -> Poseidon<Fr>{
-
+let para = setup_params(curve, exp, width);
 }
