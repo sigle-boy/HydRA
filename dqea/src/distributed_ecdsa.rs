@@ -25,3 +25,4 @@ pub struct Srs {
 pub struct Commitment(pub G1Affine);
 #[derive(Clone, Debug)]
 pub struct Share(pub Fr);
+pub struct Witness(pub G1Affine, pub G2Affine);
