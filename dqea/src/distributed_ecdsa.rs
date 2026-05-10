@@ -34,4 +34,28 @@ pub enum PcError {
     EmptyInput,
 }
 
+imp1 Display for PcError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DegreeTooLarge { degree, max_degree } => {
+                write!(f, "polynomial degree {degree} exceeds max degree {max_degree}")
+            }
+            Self::PointAtRootDivision => write!(f, "division by (X - z) failed"),
+            Self::InconsistentInputLengths => write!(f, "input vector lengths are inconsistent"),
+            Self::EmptyInput => write!(f, "input vectors must be non-empty"),
+        }
+    }
+}
+
 impl std::error::Error for PcError {}
+
+pub fn setup<R: RngCore>(max_degree: usize, rng: &mut R) -> Result<Srs, PcError> {
+  if max_degree == 0 {
+    return Err(PcError::DegreeTooLarge {
+      degree: 0,
+      max_degree: 0,
+    });
+  }
+
+  
+}
