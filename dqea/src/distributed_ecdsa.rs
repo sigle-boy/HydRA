@@ -57,5 +57,33 @@ pub fn setup<R: RngCore>(max_degree: usize, rng: &mut R) -> Result<Srs, PcError>
     });
   }
 
+  let g = G1Projective::rand(rng).into_affine();
+  let h = G2Projective::rand(rng).into_affine();
+  let gamma = Fr::rand(rng);
+
+  let mut gamma_g_powers = Vec::with_capacity(max_degree + 1);
+  let mut cur = Fr::one();
+  for _ in 0..=max_degree {
+    gamma_g_powers.push(g.mul_bigint(cur.into_brgint()).into_affine());
+    cur *= gamma;
+  }
+
+  let mut gamma_h_powers = Vec::with_capacity(max_degree + 1);
+  let mut cur2 = Fr::one();
+  for _ in 0..=max_degree {
+    gamma_h_powers.push(h.mul_bigint(cur2.into_bigint()).into_affine());
+    cur2 *= gamma;
+  }
+
+  let gamma_h = h.mul_bigint(gamma.into_bigint()).into_affine();
+
+  Ok(Srs {
+    g,
+    h,
+    gamma_g_powers,
+    gamma_h_powers,
+    max_degree,
+    gamma_secret_for_demo_only: gamma,
+  })
   
 }
