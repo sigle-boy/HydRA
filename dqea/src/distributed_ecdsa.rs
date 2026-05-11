@@ -87,3 +87,14 @@ pub fn setup<R: RngCore>(max_degree: usize, rng: &mut R) -> Result<Srs, PcError>
   })
   
 }
+
+    pub fn commit(srs: &Srs, poly: &Poly) -> Result<Commitment, PcError> {
+    let degree = poly.degree();
+    if degree > srs.max_degree {
+        return Err(PcError::DegreeTooLarge {
+            degree,
+            max_degree: srs.max_degree,
+        });
+    }
+
+   
