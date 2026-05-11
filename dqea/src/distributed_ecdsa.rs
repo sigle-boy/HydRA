@@ -76,7 +76,7 @@ pub fn setup<R: RngCore>(max_degree: usize, rng: &mut R) -> Result<Srs, PcError>
   }
 
   let gamma_h = h.mul_bigint(gamma.into_bigint()).into_affine();
-
+  println!("TEST");
   Ok(Srs {
     g,
     h,
