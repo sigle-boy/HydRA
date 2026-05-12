@@ -110,3 +110,6 @@ pub fn commit(srs: &Srs, poly: &Poly) -> Result<Commitment, PcError> {
 }
 
    
+pub fn open(poly: &Poly, point_j: Fr) -> Share {
+    Share(poly.evaluate(&point_j))
+}
