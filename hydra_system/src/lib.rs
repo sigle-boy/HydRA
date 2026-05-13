@@ -42,6 +42,26 @@ pub fn GenerateDeviceKey() -> (SigningKey<Secp256k1>, VerifyingKey<Secp256k1>)  
     (signing_key, verifying_key)
 }
 
+
+pub fn GenerateVerifierAuthoriedInfor(device_verifying_key:  VerifyingKey<Secp256k1>, measure: String )  -> Fr{
+
+    let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("获取系统时间失败"); 
+    let period = Duration::from_secs(8640000 as u64); 
+
+    let times = Fr::from(timestamp.as_secs());
+    let peri = Fr::from(period.as_secs());
+    let ar = Fr::from(BigUint::from_bytes_be(measure.as_bytes()));
+    let pk = Fr::from(BigUint::from_bytes_be(device_verifying_key.to_encoded_point(true).as_bytes()));
+
+	let temp_1 = hasher.hash(&[pk, ar][..]).unwrap();
+	let temp_2 = hasher.hash(&[temp_1, times][..]).unwrap();
+	let output = hasher.hash(&[temp_2, peri][..]).unwrap();
+
+    output
+}
+
+
 pub fn GenerateDeviceMerkleLeaf(verifying_key:  VerifyingKey<Secp256k1> , signing_key:SigningKey<Secp256k1> ) -> Fr  {
 
     let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
