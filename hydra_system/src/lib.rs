@@ -33,3 +33,11 @@ pub fn GenerateSingleDeviceInfor() -> (Fr, Fr)  {
 
     (leaf, output)
 }
+
+pub fn GenerateDeviceKey() -> (SigningKey<Secp256k1>, VerifyingKey<Secp256k1>)   {
+
+    let signing_key: SigningKey<Secp256k1> = SigningKey::<Secp256k1>::random(&mut OsRng);
+    let verifying_key = VerifyingKey::from(&signing_key);
+
+    (signing_key, verifying_key)
+}
