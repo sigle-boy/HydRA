@@ -41,3 +41,19 @@ pub fn GenerateDeviceKey() -> (SigningKey<Secp256k1>, VerifyingKey<Secp256k1>)  
 
     (signing_key, verifying_key)
 }
+
+pub fn GenerateDeviceMerkleLeaf(verifying_key:  VerifyingKey<Secp256k1> , signing_key:SigningKey<Secp256k1> ) -> Fr  {
+
+    let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
+    let measure = fs::read_to_string("example.txt").expect("度量信息读取错误");
+
+    let sk = Fr::from(BigUint::from_bytes_be(&signing_key.to_bytes()[..]));
+    let pk = Fr::from(BigUint::from_bytes_be(verifying_key.to_encoded_point(true).as_bytes()));
+    let ar = Fr::from(BigUint::from_bytes_be(measure.as_bytes()));
+
+    let c = hasher.hash(&[ar, sk][..]).unwrap();
+	let leaf = hasher.hash(&[c, pk][..]).unwrap();
+	
+    leaf
+
+}
