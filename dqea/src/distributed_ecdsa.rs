@@ -113,3 +113,25 @@ pub fn commit(srs: &Srs, poly: &Poly) -> Result<Commitment, PcError> {
 pub fn open(poly: &Poly, point_j: Fr) -> Share {
     Share(poly.evaluate(&point_j))
 }
+fn quotient_witness_polynomial(poly: &Poly, z: Fr) -> Result<Poly, PcError> {
+  
+    let divisor = DensePolynomial::from_coefficients_vec(vec![-z, Fr::one()]);
+
+
+    let mut numerator = poly.clone();
+    let pz = poly.evaluate(&z);
+    if numerator.coeffs.is_empty() {
+        numerator.coeffs.push(-pz);
+    } else {
+        numerator.coeffs[0] -= pz;
+    }
+
+    let (q, r) = ark_poly::univariate::DenseOrSparsePolynomial::from(&numerator)
+        .divide_with_q_and_r(&ark_poly::univariate::DenseOrSparsePolynomial::from(&divisor))
+        .ok_or(PcError::PointAtRootDivision)?;
+
+  
+    debug_assert!(r.is_zero());
+    
+    Ok(q.into())
+}
