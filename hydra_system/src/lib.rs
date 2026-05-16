@@ -2,6 +2,30 @@ pub mod poseidon;
 pub mod zkcircuit;
 pub mod shurbstree;
 
+use shurbstree::{find_shrubs_path,find_interval_index,insert_shrubs_tree,exponents_of_two};
+use ark_bls12_381::Fr as BlsScalar;
+use arkworks_native_gadgets::poseidon::{Poseidon,FieldHasher};
+use rand_core::OsRng;
+use ecdsa::{SigningKey, VerifyingKey};
+use k256::Secp256k1;
+use num_bigint::BigUint;
+use std::fs;
+use std::time::Duration;
+//use std::time::{Duration,SystemTime, UNIX_EPOCH};
+use ark_std::rand::rngs::StdRng;
+use ark_std::UniformRand;
+
+#[derive(Debug)]
+pub struct DeviceConfigInfor {
+    pub signing_key: BlsScalar,
+    pub verifying_key: BlsScalar,
+    pub measured_value: BlsScalar,
+    pub timestamp: BlsScalar,
+    pub period: BlsScalar,
+    pub merkle_leaf: BlsScalar,
+    pub authorized_infor: BlsScalar,
+}
+
 pub fn find_device_shrubs_path_tag(
     root: &[BlsScalar],
     leaves: &[BlsScalar],
