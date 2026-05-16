@@ -3,7 +3,7 @@ use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisE
 use arkworks_r1cs_gadgets::poseidon::FieldHasherGadget;
 use crate::{DeviceConfigInfor};
 use ark_bls12_381:: Fr as BlsScalar;
-
+use num_bigint::BigUint;
 #[derive(Copy, Debug)]
 pub struct AttestationCircuit<'a,  HG: FieldHasherGadget<BlsScalar>> {
     pk: BlsScalar,
@@ -34,8 +34,8 @@ impl<'a,  HG: FieldHasherGadget<BlsScalar>> AttestationCircuit<'a, HG> {
         hasher: &'a HG::Native,
     ) -> Self {
         Self {
-            pk: device_config.verifying_key,
-            sk: device_config.signing_key,
+            pk: BlsScalar::from(BigUint::from_bytes_be(device_config.verifying_key.to_encoded_point(true).as_bytes())),  //BlsScalar::from(BigUint::from_bytes_be(device_config.verifying_key.to_encoded_point(true).as_bytes()))
+            sk: BlsScalar::from(BigUint::from_bytes_be(&device_config.signing_key.to_bytes()[..])), //  BlsScalar::from(BigUint::from_bytes_be(&device_config.signing_key.to_bytes()[..]))
             ar: device_config.measured_value,
             period: device_config.period,
             output: device_config.authorized_infor,
