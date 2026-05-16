@@ -186,33 +186,33 @@ pub struct DeviceConfigInfor {
 }
 
 impl DeviceConfigInfor {
-    // pub fn gen_test_infor(
-    //     mut rng: &mut StdRng,
-    //     hasher: &Poseidon<BlsScalar>,
-    // ) -> DeviceConfigInfor {
+    pub fn gen_test_infor(
+        mut rng: &mut StdRng,
+        hasher: &Poseidon<BlsScalar>,
+    ) -> DeviceConfigInfor {
 
-    //     let pk = BlsScalar::rand(&mut rng);
-    //     let sk = BlsScalar::rand(&mut rng);
-    //     let time = BlsScalar::rand(&mut rng);
-    //     let period = BlsScalar::rand(&mut rng);
-    //     let ar = BlsScalar::rand(&mut rng);
+        let pk = BlsScalar::rand(&mut rng);
+        let sk = BlsScalar::rand(&mut rng);
+        let time = BlsScalar::rand(&mut rng);
+        let period = BlsScalar::rand(&mut rng);
+        let ar = BlsScalar::rand(&mut rng);
 
-    //     let c = hasher.hash(&[ar, sk][..]).unwrap();
-    //     let leaf = hasher.hash(&[c, pk][..]).unwrap();
-    //     let output_1 = hasher.hash(&[pk, ar][..]).unwrap();
-    //     let output_2 = hasher.hash(&[output_1, time][..]).unwrap();
-    //     let output = hasher.hash(&[output_2, period][..]).unwrap();
+        let c = hasher.hash(&[ar, sk][..]).unwrap();
+        let leaf = hasher.hash(&[c, pk][..]).unwrap();
+        let output_1 = hasher.hash(&[pk, ar][..]).unwrap();
+        let output_2 = hasher.hash(&[output_1, time][..]).unwrap();
+        let output = hasher.hash(&[output_2, period][..]).unwrap();
 
-    //     DeviceConfigInfor {
-    //         signing_key: sk,
-    //         verifying_key: pk,
-    //         measured_value: ar,
-    //         timestamp: time,
-    //         period: period,
-    //         merkle_leaf: leaf,
-    //         authorized_infor: output,
-    //     }
-    // }
+        DeviceConfigInfor {
+            signing_key: sk,
+            verifying_key: pk,
+            measured_value: ar,
+            timestamp: time,
+            period: period,
+            merkle_leaf: leaf,
+            authorized_infor: output,
+        }
+    }
 
     pub fn gen_public_inputs(&self, root: &[BlsScalar]) -> Vec<BlsScalar> {
         let mut public_inputs = vec![];
