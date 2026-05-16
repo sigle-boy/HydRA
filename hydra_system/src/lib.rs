@@ -2,6 +2,39 @@ pub mod poseidon;
 pub mod zkcircuit;
 pub mod shurbstree;
 
+pub fn find_device_shrubs_path_tag(
+    root: &[BlsScalar],
+    leaves: &[BlsScalar],
+    leaf: BlsScalar,
+    hasher: &Poseidon<BlsScalar>,
+) -> (Option<Vec<BlsScalar>>, Option<Vec<bool>>) {
+    match find_interval_index(&leaves, leaf) {
+        Some((vect, index)) => {
+            let inx = 0;
+
+            match find_shrubs_path(&root, &vect, inx, index, hasher) {
+                Some((path, tag)) => {
+                    // for i in path.iter() {
+                    //     println!("path: {}", i);
+                    // }
+
+                    (Some(path), Some(tag))
+                }
+
+                None => {
+                    (None, None)
+                }
+            }
+        }
+
+        None => {
+            println!("110");
+            (None, None)
+        }
+    }
+}
+
+
 pub fn GenerateSingleDeviceInfor() -> (Fr, Fr)  {
 
     let hasher = PoseidonSetup(Curve::Bls381, 5, 3);
