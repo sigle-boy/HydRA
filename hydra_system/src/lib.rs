@@ -378,3 +378,361 @@ pub fn insert_batch_devices(
         insert_shrubs_tree(&mut root, &new_leaves, k, &exps, ll, &hasher);
     }
 }
+
+
+#[derive(Debug)]
+pub struct PublicContext {
+    pub root: Vec<BlsScalar>,
+    pub verifier_pk: VerifyingKey<Secp256k1>,
+}
+
+fn append_len_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.extend_from_slice(&(bytes.len() as u64).to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+fn read_exact<const N: usize>(cursor: &mut Cursor<&[u8]>) -> Result<[u8; N]> {
+    let mut buf = [0u8; N];
+    cursor.read_exact(&mut buf).context("读取二进制字段失败")?;
+    Ok(buf)
+}
+
+fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64> {
+    Ok(u64::from_be_bytes(read_exact::<8>(cursor)?))
+}
+
+fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32> {
+    Ok(u32::from_be_bytes(read_exact::<4>(cursor)?))
+}
+
+fn read_len_bytes(cursor: &mut Cursor<&[u8]>) -> Result<Vec<u8>> {
+    let len = read_u64(cursor)? as usize;
+    let mut bytes = vec![0u8; len];
+    cursor.read_exact(&mut bytes).context("读取变长二进制字段失败")?;
+    Ok(bytes)
+}
+
+fn append_string(out: &mut Vec<u8>, value: &str) {
+    append_len_bytes(out, value.as_bytes());
+}
+
+fn read_string(cursor: &mut Cursor<&[u8]>) -> Result<String> {
+    String::from_utf8(read_len_bytes(cursor)?).context("解析 UTF-8 字符串失败")
+}
+
+fn append_duration(out: &mut Vec<u8>, value: Duration) {
+    out.extend_from_slice(&value.as_secs().to_be_bytes());
+    out.extend_from_slice(&value.subsec_nanos().to_be_bytes());
+}
+
+fn read_duration(cursor: &mut Cursor<&[u8]>) -> Result<Duration> {
+    let secs = read_u64(cursor)?;
+    let nanos = read_u32(cursor)?;
+    Ok(Duration::new(secs, nanos))
+}
+
+fn encode_scalar(value: &BlsScalar) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    value
+        .serialize_uncompressed(&mut bytes)
+        .context("序列化 BlsScalar 失败")?;
+    Ok(bytes)
+}
+
+fn decode_scalar(bytes: &[u8]) -> Result<BlsScalar> {
+    let mut cursor = Cursor::new(bytes);
+    BlsScalar::deserialize_uncompressed(&mut cursor).context("反序列化 BlsScalar 失败")
+}
+
+fn append_scalar(out: &mut Vec<u8>, value: &BlsScalar) -> Result<()> {
+    append_len_bytes(out, &encode_scalar(value)?);
+    Ok(())
+}
+
+fn read_scalar(cursor: &mut Cursor<&[u8]>) -> Result<BlsScalar> {
+    decode_scalar(&read_len_bytes(cursor)?)
+}
+
+fn append_scalar_vec(out: &mut Vec<u8>, values: &[BlsScalar]) -> Result<()> {
+    out.extend_from_slice(&(values.len() as u64).to_be_bytes());
+    for value in values {
+        append_scalar(out, value)?;
+    }
+    Ok(())
+}
+
+fn read_scalar_vec(cursor: &mut Cursor<&[u8]>) -> Result<Vec<BlsScalar>> {
+    let len = read_u64(cursor)? as usize;
+    let mut values = Vec::with_capacity(len);
+    for _ in 0..len {
+        values.push(read_scalar(cursor)?);
+    }
+    Ok(values)
+}
+
+fn append_bool_vec(out: &mut Vec<u8>, values: &[bool]) {
+    out.extend_from_slice(&(values.len() as u64).to_be_bytes());
+    for value in values {
+        out.push(u8::from(*value));
+    }
+}
+
+fn read_bool_vec(cursor: &mut Cursor<&[u8]>) -> Result<Vec<bool>> {
+    let len = read_u64(cursor)? as usize;
+    let mut values = Vec::with_capacity(len);
+    for _ in 0..len {
+        let b = read_exact::<1>(cursor)?[0];
+        match b {
+            0 => values.push(false),
+            1 => values.push(true),
+            _ => bail!("bool 字段非法: {}", b),
+        }
+    }
+    Ok(values)
+}
+
+fn append_option_scalar_vec(out: &mut Vec<u8>, values: &Option<Vec<BlsScalar>>) -> Result<()> {
+    match values {
+        Some(values) => {
+            out.push(1);
+            append_scalar_vec(out, values)?;
+        }
+        None => out.push(0),
+    }
+    Ok(())
+}
+
+fn read_option_scalar_vec(cursor: &mut Cursor<&[u8]>) -> Result<Option<Vec<BlsScalar>>> {
+    match read_exact::<1>(cursor)?[0] {
+        0 => Ok(None),
+        1 => Ok(Some(read_scalar_vec(cursor)?)),
+        other => bail!("Option<Vec<BlsScalar>> 标记非法: {}", other),
+    }
+}
+
+fn append_option_bool_vec(out: &mut Vec<u8>, values: &Option<Vec<bool>>) {
+    match values {
+        Some(values) => {
+            out.push(1);
+            append_bool_vec(out, values);
+        }
+        None => out.push(0),
+    }
+}
+
+fn read_option_bool_vec(cursor: &mut Cursor<&[u8]>) -> Result<Option<Vec<bool>>> {
+    match read_exact::<1>(cursor)?[0] {
+        0 => Ok(None),
+        1 => Ok(Some(read_bool_vec(cursor)?)),
+        other => bail!("Option<Vec<bool>> 标记非法: {}", other),
+    }
+}
+
+fn encode_signature(value: &Signature) -> Vec<u8> {
+    value.to_der().as_bytes().to_vec()
+}
+
+fn decode_signature(bytes: &[u8]) -> Result<Signature> {
+    Signature::from_der(bytes).context("反序列化 secp256k1 签名失败")
+}
+
+fn append_signature(out: &mut Vec<u8>, value: &Signature) {
+    append_len_bytes(out, &encode_signature(value));
+}
+
+fn read_signature(cursor: &mut Cursor<&[u8]>) -> Result<Signature> {
+    decode_signature(&read_len_bytes(cursor)?)
+}
+
+fn append_option_signature(out: &mut Vec<u8>, value: &Option<Signature>) {
+    match value {
+        Some(sig) => {
+            out.push(1);
+            append_signature(out, sig);
+        }
+        None => out.push(0),
+    }
+}
+
+fn read_option_signature(cursor: &mut Cursor<&[u8]>) -> Result<Option<Signature>> {
+    match read_exact::<1>(cursor)?[0] {
+        0 => Ok(None),
+        1 => Ok(Some(read_signature(cursor)?)),
+        other => bail!("Option<Signature> 标记非法: {}", other),
+    }
+}
+
+fn append_verifying_key(out: &mut Vec<u8>, value: &VerifyingKey<Secp256k1>) {
+    append_len_bytes(out, value.to_encoded_point(true).as_bytes());
+}
+
+fn read_verifying_key(cursor: &mut Cursor<&[u8]>) -> Result<VerifyingKey<Secp256k1>> {
+    VerifyingKey::<Secp256k1>::from_sec1_bytes(&read_len_bytes(cursor)?)
+        .context("反序列化 secp256k1 公钥失败")
+}
+
+fn encode_proof(value: &Proof<Bls12_381>) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    value
+        .serialize_uncompressed(&mut bytes)
+        .context("序列化 Groth16 proof 失败")?;
+    Ok(bytes)
+}
+
+fn decode_proof(bytes: &[u8]) -> Result<Proof<Bls12_381>> {
+    let mut cursor = Cursor::new(bytes);
+    Proof::<Bls12_381>::deserialize_uncompressed(&mut cursor)
+        .context("反序列化 Groth16 proof 失败")
+}
+
+fn append_proof(out: &mut Vec<u8>, value: &Proof<Bls12_381>) -> Result<()> {
+    append_len_bytes(out, &encode_proof(value)?);
+    Ok(())
+}
+
+fn read_proof(cursor: &mut Cursor<&[u8]>) -> Result<Proof<Bls12_381>> {
+    decode_proof(&read_len_bytes(cursor)?)
+}
+
+fn encode_ark_vk(value: &ArkVerifyingKey<Bls12_381>) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    value
+        .serialize_uncompressed(&mut bytes)
+        .context("序列化 Groth16 verifying key 失败")?;
+    Ok(bytes)
+}
+
+fn decode_ark_vk(bytes: &[u8]) -> Result<ArkVerifyingKey<Bls12_381>> {
+    let mut cursor = Cursor::new(bytes);
+    ArkVerifyingKey::<Bls12_381>::deserialize_uncompressed(&mut cursor)
+        .context("反序列化 Groth16 verifying key 失败")
+}
+
+fn append_ark_vk(out: &mut Vec<u8>, value: &ArkVerifyingKey<Bls12_381>) -> Result<()> {
+    append_len_bytes(out, &encode_ark_vk(value)?);
+    Ok(())
+}
+
+fn read_ark_vk(cursor: &mut Cursor<&[u8]>) -> Result<ArkVerifyingKey<Bls12_381>> {
+    decode_ark_vk(&read_len_bytes(cursor)?)
+}
+
+pub fn save_key_infor(path: impl AsRef<Path>, key: &KeyInfor) -> Result<()> {
+    ensure_workspace_data_dir()?;
+    let mut out = Vec::new();
+    append_len_bytes(&mut out, &key.signing_key.to_bytes()[..]);
+    fs::write(path, out).context("保存 KeyInfor 失败")
+}
+
+pub fn load_key_infor(path: impl AsRef<Path>) -> Result<KeyInfor> {
+    let bytes = fs::read(path).context("读取 KeyInfor 失败")?;
+    let mut cursor = Cursor::new(bytes.as_slice());
+    let sk_bytes = read_len_bytes(&mut cursor)?;
+    if sk_bytes.len() != 32 {
+        bail!("secp256k1 私钥长度应为 32 字节，实际为 {} 字节", sk_bytes.len());
+    }
+    let signing_key = SigningKey::<Secp256k1>::from_bytes(k256::FieldBytes::from_slice(&sk_bytes))
+        .context("反序列化 secp256k1 私钥失败")?;
+    let verifying_key = VerifyingKey::from(&signing_key);
+    Ok(KeyInfor {
+        signing_key,
+        verifying_key,
+    })
+}
+
+pub fn save_device_client_infor(path: impl AsRef<Path>, value: &DeviceClientInfor) -> Result<()> {
+    ensure_workspace_data_dir()?;
+    let mut out = Vec::new();
+    append_verifying_key(&mut out, &value.verifying_key);
+    append_string(&mut out, &value.measured_value);
+    append_scalar(&mut out, &value.merkle_leaf)?;
+    append_len_bytes(&mut out, &value.evidence);
+    fs::write(path, out).context("保存 DeviceClientInfor 失败")
+}
+
+pub fn load_device_client_infor(path: impl AsRef<Path>) -> Result<DeviceClientInfor> {
+    let bytes = fs::read(path).context("读取 DeviceClientInfor 失败")?;
+    let mut cursor = Cursor::new(bytes.as_slice());
+    Ok(DeviceClientInfor {
+        verifying_key: read_verifying_key(&mut cursor)?,
+        measured_value: read_string(&mut cursor)?,
+        merkle_leaf: read_scalar(&mut cursor)?,
+        evidence: read_len_bytes(&mut cursor)?,
+    })
+}
+
+pub fn save_response_device_infor(path: impl AsRef<Path>, value: &ResponseDeviceInfor) -> Result<()> {
+    ensure_workspace_data_dir()?;
+    let mut out = Vec::new();
+    append_verifying_key(&mut out, &value.verifying_key);
+    append_duration(&mut out, value.timestamp);
+    append_duration(&mut out, value.period);
+    append_option_signature(&mut out, &value.sig);
+    append_option_scalar_vec(&mut out, &value.shrubs_path)?;
+    append_option_bool_vec(&mut out, &value.shrubs_tag);
+    fs::write(path, out).context("保存 ResponseDeviceInfor 失败")
+}
+
+pub fn load_response_device_infor(path: impl AsRef<Path>) -> Result<ResponseDeviceInfor> {
+    let bytes = fs::read(path).context("读取 ResponseDeviceInfor 失败")?;
+    let mut cursor = Cursor::new(bytes.as_slice());
+    Ok(ResponseDeviceInfor {
+        verifying_key: read_verifying_key(&mut cursor)?,
+        timestamp: read_duration(&mut cursor)?,
+        period: read_duration(&mut cursor)?,
+        sig: read_option_signature(&mut cursor)?,
+        shrubs_path: read_option_scalar_vec(&mut cursor)?,
+        shrubs_tag: read_option_bool_vec(&mut cursor)?,
+    })
+}
+
+pub fn save_public_context(path: impl AsRef<Path>, value: &PublicContext) -> Result<()> {
+    ensure_workspace_data_dir()?;
+    let mut out = Vec::new();
+    append_scalar_vec(&mut out, &value.root)?;
+    append_verifying_key(&mut out, &value.verifier_pk);
+    fs::write(path, out).context("保存 PublicContext 失败")
+}
+
+pub fn load_public_context(path: impl AsRef<Path>) -> Result<PublicContext> {
+    let bytes = fs::read(path).context("读取 PublicContext 失败")?;
+    let mut cursor = Cursor::new(bytes.as_slice());
+    Ok(PublicContext {
+        root: read_scalar_vec(&mut cursor)?,
+        verifier_pk: read_verifying_key(&mut cursor)?,
+    })
+}
+
+pub fn save_evidence_bundle(
+    path: impl AsRef<Path>,
+    evidence_reply: &EvidenceReply,
+    device_signature: &Signature,
+) -> Result<()> {
+    ensure_workspace_data_dir()?;
+    let mut out = Vec::new();
+    append_proof(&mut out, &evidence_reply.proof)?;
+    append_ark_vk(&mut out, &evidence_reply.vk)?;
+    append_signature(&mut out, &evidence_reply.sig);
+    append_verifying_key(&mut out, &evidence_reply.pk);
+    append_duration(&mut out, evidence_reply.timestamp);
+    append_duration(&mut out, evidence_reply.period);
+    append_scalar(&mut out, &evidence_reply.authorized_infor)?;
+    append_signature(&mut out, device_signature);
+    fs::write(path, out).context("保存 EvidenceReply 与设备签名失败")
+}
+
+pub fn load_evidence_bundle(path: impl AsRef<Path>) -> Result<(EvidenceReply, Signature)> {
+    let bytes = fs::read(path).context("读取 EvidenceReply 与设备签名失败")?;
+    let mut cursor = Cursor::new(bytes.as_slice());
+    let evidence_reply = EvidenceReply {
+        proof: read_proof(&mut cursor)?,
+        vk: read_ark_vk(&mut cursor)?,
+        sig: read_signature(&mut cursor)?,
+        pk: read_verifying_key(&mut cursor)?,
+        timestamp: read_duration(&mut cursor)?,
+        period: read_duration(&mut cursor)?,
+        authorized_infor: read_scalar(&mut cursor)?,
+    };
+    let device_signature = read_signature(&mut cursor)?;
+    Ok((evidence_reply, device_signature))
+}
