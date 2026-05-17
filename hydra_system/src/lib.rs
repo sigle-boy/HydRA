@@ -11,17 +11,56 @@ use k256::Secp256k1;
 use num_bigint::BigUint;
 use std::fs;
 use std::time::{Duration,SystemTime, UNIX_EPOCH};
-use ark_std::rand::rngs::StdRng;
-use ark_std::UniformRand;
 use k256::ecdsa::{
     signature::{Signer, Verifier},
     Signature,
 };
-use ark_groth16::{VerifyingKey as ArkVerifyingKey,Proof};
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_groth16::{Groth16, VerifyingKey as ArkVerifyingKey, Proof};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_crypto_primitives::SNARK;
+use arkworks_r1cs_gadgets::poseidon::PoseidonGadget;
+use ark_std::UniformRand;
+use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::io::{Cursor, Read};
+use anyhow::{Context, Result, bail};
 
-use k256::elliptic_curve::sec1::ToEncodedPoint;
 
+
+type GrothSetup = Groth16<Bls12_381>;
+type RACircuit<'a> = crate::zkcircuit::AttestationCircuit<'a, PoseidonGadget<BlsScalar>>;
+
+pub const DATA_DIR_NAME: &str = "workspace-data";
+pub const ATTESTER_KEY_FILE: &str = "attester_key.bin";
+pub const DEVICE_INFOR_FILE: &str = "dev_infor.bin";
+pub const VERIFIER_KEY_FILE: &str = "verifier_key.bin";
+pub const VERIFIER_RESPONSE_FILE: &str = "dev_res.bin";
+pub const PUBLIC_CONTEXT_FILE: &str = "public_context.bin";
+pub const EVIDENCE_FILE: &str = "evidence.bin";
+
+pub fn project_root_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+pub fn workspace_data_dir() -> PathBuf {
+    project_root_dir().join(DATA_DIR_NAME)
+}
+
+pub fn workspace_data_file(name: &str) -> PathBuf {
+    workspace_data_dir().join(name)
+}
+
+pub fn ensure_workspace_data_dir() -> Result<()> {
+    fs::create_dir_all(workspace_data_dir()).context("创建 workspace-data 目录失败")
+}
+
+pub fn read_measurement_file() -> String {
+    fs::read_to_string(project_root_dir().join("example.txt")).expect("度量信息读取错误")
+}
+
+pub fn default_hasher() -> Poseidon<BlsScalar> {
+    crate::poseidon::poseidon_setup(arkworks_utils::Curve::Bls381, 5, 3)
+}
 
 
 #[derive(Debug)]
@@ -30,8 +69,8 @@ pub struct EvidenceReply {
     pub vk:  ArkVerifyingKey<Bls12_381>,
     pub sig:   Signature,
     pub pk:  VerifyingKey<Secp256k1>,
-    pub timestamp:BlsScalar,
-    pub period: BlsScalar,
+    pub timestamp:Duration,
+    pub period: Duration,
     pub authorized_infor: BlsScalar,
 
 }
@@ -49,24 +88,19 @@ impl EvidenceReply {
             }
 
     }
+    pub fn gen_public_inputs(&self, root: &[BlsScalar]) -> Vec<BlsScalar> {
+        let mut public_inputs = vec![];
+        public_inputs.push(BlsScalar::from(BigUint::from_bytes_be(self.pk.to_encoded_point(true).as_bytes()))); 
+        public_inputs.extend_from_slice(&root);
+        public_inputs.push(self.authorized_infor);
+        public_inputs.push(BlsScalar::from(self.timestamp.as_secs()));
+        public_inputs.push(BlsScalar::from(self.period.as_secs()));
 
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        self.proof.serialize_uncompressed(&mut bytes).unwrap();
-        self.vk.serialize_uncompressed(&mut bytes).unwrap();
-
-        bytes.extend_from_slice(self.sig.to_bytes().as_slice());
-        bytes.extend_from_slice(self.pk.to_encoded_point(true).as_bytes());
-
-        self.timestamp.serialize_uncompressed(&mut bytes).unwrap();
-        self.period.serialize_uncompressed(&mut bytes).unwrap();
-        self.authorized_infor.serialize_uncompressed(&mut bytes).unwrap();
-
-        bytes
+        public_inputs
     }
 
-    pub fn to_signing_bytes_all_fields(&self) -> Result<Vec<u8>, SerializationError> {
+
+       pub fn to_signing_bytes_all_fields(&self) -> Result<Vec<u8>, SerializationError> {
         let mut out = Vec::new();
 
         let proof_bytes = serialize_ark(&self.proof)?;
@@ -81,10 +115,10 @@ impl EvidenceReply {
         let pk_encoded = self.pk.to_encoded_point(true);
         append_field(&mut out, &b"pk"[..], pk_encoded.as_bytes());
 
-        let timestamp_bytes = serialize_ark(&self.timestamp)?;
+        let timestamp_bytes = serialize_duration(&self.timestamp);
         append_field(&mut out, &b"timestamp"[..], &timestamp_bytes);
 
-        let period_bytes = serialize_ark(&self.period)?;
+        let period_bytes = serialize_duration(&self.period);
         append_field(&mut out, &b"period"[..], &period_bytes);
 
         let authorized_infor_bytes = serialize_ark(&self.authorized_infor)?;
@@ -109,6 +143,16 @@ fn serialize_ark<T: CanonicalSerialize>(value: &T) -> Result<Vec<u8>, Serializat
     Ok(bytes)
 }
 
+fn serialize_duration(duration: &Duration) -> Vec<u8> {
+    let mut bytes = Vec::new();
+
+    bytes.extend_from_slice(&duration.as_secs().to_be_bytes());
+
+    bytes.extend_from_slice(&duration.subsec_nanos().to_be_bytes());
+
+    bytes
+}
+
 #[derive(Debug)]
 pub struct DeviceClientInfor {
     pub verifying_key: VerifyingKey<Secp256k1>,
@@ -118,7 +162,7 @@ pub struct DeviceClientInfor {
 }
 impl DeviceClientInfor  {
     pub fn new(vk: VerifyingKey<Secp256k1>,leaf: BlsScalar) -> DeviceClientInfor {
-        let measure = fs::read_to_string("example.txt").expect("度量信息读取错误");
+        let measure = read_measurement_file();
         DeviceClientInfor {
             verifying_key: vk,
             merkle_leaf: leaf,
@@ -133,10 +177,10 @@ impl DeviceClientInfor  {
 pub fn find_device_shrubs_path_tag(
     root: &[BlsScalar],
     leaves: &[BlsScalar],
-    leaf: BlsScalar,
+    leaf: &BlsScalar,
     hasher: &Poseidon<BlsScalar>,
 ) -> (Option<Vec<BlsScalar>>, Option<Vec<bool>>) {
-    match find_interval_index(&leaves, leaf) {
+    match find_interval_index(&leaves, &leaf) {
         Some((vect, index)) => {
             let inx = 0;
 
@@ -162,22 +206,44 @@ pub fn find_device_shrubs_path_tag(
     }
 }
 
-pub fn verifier_compute_sig(verifier_key: &KeyInfor, device_time: &ResponseDeviceInfor) -> Signature {
+pub fn verifier_compute_sig(verifier_key: &KeyInfor, device_time: &ResponseDeviceInfor,device_author_infor: &BlsScalar) -> Signature {
     let mut msg = Vec::new();
     msg.extend_from_slice(device_time.verifying_key.to_encoded_point(true).as_bytes());
+    msg.extend_from_slice(device_author_infor.to_string().as_bytes());
     msg.extend_from_slice(&device_time.timestamp.as_secs().to_be_bytes());
     msg.extend_from_slice(&device_time.period.as_secs().to_be_bytes());
+    //println!("{:?}", msg);
     let sig = verifier_key.signing_key.sign(msg.as_slice());
     sig 
 }
+
+pub fn rely_party_verifier_sig(evidence_reply: &EvidenceReply, verifier_pk:&VerifyingKey<Secp256k1> )  {
+    let mut msg = Vec::new();
+    msg.extend_from_slice(evidence_reply.pk.to_encoded_point(true).as_bytes());
+    msg.extend_from_slice(&evidence_reply.authorized_infor.to_string().as_bytes());
+    msg.extend_from_slice(&evidence_reply.timestamp.as_secs().to_be_bytes());
+    msg.extend_from_slice(&evidence_reply.period.as_secs().to_be_bytes());
+    //println!("{:?}", msg);
+   // verifier_pk.verify(msg.as_slice(), &evidence_reply.sig);
+
+    match verifier_pk.verify(msg.as_slice(), &evidence_reply.sig) {
+        Ok(_) => {
+            println!("设备签名验证成功");
+        }
+        Err(e) => {
+            println!("设备签名验证失败: {:?}", e);
+        }
+    }
+}
+
 
 #[derive(Debug)]
 pub struct DeviceConfigInfor {
     pub signing_key: SigningKey<Secp256k1>,
     pub verifying_key: VerifyingKey<Secp256k1>,
     pub measured_value: BlsScalar,
-    pub timestamp: BlsScalar,
-    pub period: BlsScalar,
+    pub timestamp: Duration,
+    pub period: Duration,
     pub merkle_leaf: BlsScalar,
     pub merkle_path: Option<Vec<BlsScalar>>,
     pub merkle_tag: Option<Vec<bool>>,
@@ -186,49 +252,22 @@ pub struct DeviceConfigInfor {
 }
 
 impl DeviceConfigInfor {
-    pub fn gen_test_infor(
-        mut rng: &mut StdRng,
-        hasher: &Poseidon<BlsScalar>,
-    ) -> DeviceConfigInfor {
-
-        let pk = BlsScalar::rand(&mut rng);
-        let sk = BlsScalar::rand(&mut rng);
-        let time = BlsScalar::rand(&mut rng);
-        let period = BlsScalar::rand(&mut rng);
-        let ar = BlsScalar::rand(&mut rng);
-
-        let c = hasher.hash(&[ar, sk][..]).unwrap();
-        let leaf = hasher.hash(&[c, pk][..]).unwrap();
-        let output_1 = hasher.hash(&[pk, ar][..]).unwrap();
-        let output_2 = hasher.hash(&[output_1, time][..]).unwrap();
-        let output = hasher.hash(&[output_2, period][..]).unwrap();
-
-        DeviceConfigInfor {
-            signing_key: sk,
-            verifying_key: pk,
-            measured_value: ar,
-            timestamp: time,
-            period: period,
-            merkle_leaf: leaf,
-            authorized_infor: output,
-        }
-    }
 
     pub fn gen_public_inputs(&self, root: &[BlsScalar]) -> Vec<BlsScalar> {
         let mut public_inputs = vec![];
         public_inputs.push(BlsScalar::from(BigUint::from_bytes_be(self.verifying_key.to_encoded_point(true).as_bytes()))); 
         public_inputs.extend_from_slice(&root);
         public_inputs.push(self.authorized_infor);
-        public_inputs.push(self.timestamp);
-        public_inputs.push(self.period);
+        public_inputs.push(BlsScalar::from(self.timestamp.as_secs()));
+        public_inputs.push(BlsScalar::from(self.period.as_secs()) );
 
         public_inputs
     }
 
     pub fn new(
-        dev_key: KeyInfor,
-        dev_cli: DeviceClientInfor,
-        dec_res: ResponseDeviceInfor,
+        dev_key: &KeyInfor,
+        dev_cli: &DeviceClientInfor,
+        dec_res: &ResponseDeviceInfor,
         hasher: &Poseidon<BlsScalar>,
     ) -> DeviceConfigInfor {
         
@@ -243,15 +282,15 @@ impl DeviceConfigInfor {
         let output = generate_verifier_authoried_infor(ar, pk, time, peri, hasher);
 
         DeviceConfigInfor {
-            signing_key: dev_key.signing_key,
+            signing_key: dev_key.signing_key.clone(),
             verifying_key: dev_key.verifying_key,
             measured_value: ar,
-            timestamp: time,
-            period: peri,
+            timestamp: dec_res.timestamp,
+            period: dec_res.period,
             merkle_leaf: leaf,
             authorized_infor: output,
-            merkle_path: dec_res.shrubs_path,
-            merkle_tag: dec_res.shrubs_tag,
+            merkle_path: dec_res.shrubs_path.clone(),
+            merkle_tag: dec_res.shrubs_tag.clone(),
             signature: dec_res.sig,
         }
     }
@@ -278,7 +317,7 @@ pub fn generate_device_merkle_leaf(
     device_key: &KeyInfor,
     hasher: &Poseidon<BlsScalar>,
 ) -> BlsScalar {
-    let measure = fs::read_to_string("example.txt").expect("度量信息读取错误");
+    let measure = read_measurement_file();
     let sk = BlsScalar::from(BigUint::from_bytes_be(&device_key.signing_key.to_bytes()[..]));
     let pk = BlsScalar::from(BigUint::from_bytes_be(
             &device_key.verifying_key.to_encoded_point(true).as_bytes(),
@@ -291,9 +330,9 @@ pub fn generate_device_merkle_leaf(
     leaf
 }
 pub struct ResponseDeviceInfor {
+    pub verifying_key: VerifyingKey<Secp256k1>,
     pub timestamp: Duration,
     pub period: Duration,
-    pub verifying_key: VerifyingKey<Secp256k1>,
     pub sig : Option<Signature>,
     pub shrubs_path: Option<Vec<BlsScalar>>,
     pub shrubs_tag: Option<Vec<bool>>,
@@ -377,6 +416,99 @@ pub fn insert_batch_devices(
     } else {
         insert_shrubs_tree(&mut root, &new_leaves, k, &exps, ll, &hasher);
     }
+}
+pub fn generate_device_client_infor(
+    device_key: &KeyInfor,
+    hasher: &Poseidon<BlsScalar>,
+) -> DeviceClientInfor {
+    let device_leaf = generate_device_merkle_leaf(device_key, hasher);
+    DeviceClientInfor::new(device_key.verifying_key, device_leaf)
+}
+
+pub fn generate_verifier_resonse_infor_1(
+    devices_infor: &DeviceClientInfor,
+    verifier_key: &KeyInfor,
+    leaves: &mut Vec<BlsScalar>,
+    hasher: &Poseidon<BlsScalar>,
+) -> ResponseDeviceInfor {
+    let mut device_resp = ResponseDeviceInfor::new(devices_infor.verifying_key);
+    let device_author_infor = generate_device_authoried_infor(devices_infor, &device_resp, hasher);
+    let sig = verifier_compute_sig(verifier_key, &device_resp, &device_author_infor);
+    device_resp.set_signature(&sig);
+    leaves.push(devices_infor.merkle_leaf);
+    device_resp
+}
+
+pub fn generate_device_evidence(
+    root: &[BlsScalar],
+    device_key: &KeyInfor,
+    device_client_infor: &DeviceClientInfor,
+    device_resp: &ResponseDeviceInfor,
+    hasher: &Poseidon<BlsScalar>,
+) -> (EvidenceReply, Signature) {
+    let dev_config = DeviceConfigInfor::new(device_key, device_client_infor, device_resp, hasher);
+    let merkel_path_ref = dev_config.merkle_path.as_deref();
+    let merkel_tag_ref = dev_config.merkle_tag.as_deref();
+
+    let circuit = RACircuit::new(&dev_config, root, merkel_path_ref, merkel_tag_ref, hasher);
+    let (pkk, vk) = GrothSetup::circuit_specific_setup(circuit.clone(), &mut OsRng).unwrap();
+    let proof = GrothSetup::prove(&pkk, circuit.clone(), &mut OsRng).unwrap();
+
+    let evidence_reply = EvidenceReply::new(proof, vk, &dev_config);
+    let msg: Vec<u8> = evidence_reply
+        .to_signing_bytes_all_fields()
+        .expect("serialize EvidenceReply failed");
+    let signature = dev_config.signing_key.sign(&msg[..]);
+
+    (evidence_reply, signature)
+}
+
+pub fn rely_party_verification(
+    root: &[BlsScalar],
+    evidence_reply: &EvidenceReply,
+    signature: Signature,
+    verifier_pk: &VerifyingKey<Secp256k1>,
+) {
+    let public_inputs = evidence_reply.gen_public_inputs(root);
+    let msg: Vec<u8> = evidence_reply
+        .to_signing_bytes_all_fields()
+        .expect("serialize EvidenceReply failed");
+
+    match evidence_reply.pk.verify(&msg[..], &signature) {
+        Ok(_) => println!("设备证据签名验证成功"),
+        Err(e) => println!("设备证据签名验证失败: {:?}", e),
+    }
+
+    rely_party_verifier_sig(evidence_reply, verifier_pk);
+
+    let res = GrothSetup::verify(&evidence_reply.vk, &public_inputs, &evidence_reply.proof).unwrap();
+    if res {
+        println!("设备证据验证成功！");
+    } else {
+        println!("设备证据验收失败！");
+    }
+}
+
+pub fn gen_leaves() -> Vec<BlsScalar> {
+    let n = 1usize << 11;
+    (0..n - 1)
+        .into_par_iter()
+        .map_init(
+            || OsRng,
+            |rng, _| BlsScalar::rand(rng),
+        )
+        .collect()
+}
+
+pub fn gen_new_leaves() -> Vec<BlsScalar> {
+    let n = 1usize << 12;
+    (0..n - 1)
+        .into_par_iter()
+        .map_init(
+            || OsRng,
+            |rng, _| BlsScalar::rand(rng),
+        )
+        .collect()
 }
 
 
